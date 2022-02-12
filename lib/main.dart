@@ -8,13 +8,13 @@ import 'package:telephony/telephony.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  initializeService();
+  initializeBackgroundService();
   runApp(const MyHomePage());
 }
 
 String _message = "";
 final telephony = Telephony.instance;
-Future<void> initializeService() async {
+Future<void> initializeBackgroundService() async {
   final service = FlutterBackgroundService();
 
 
@@ -42,7 +42,6 @@ void onIosBackground() {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('FLUTTER BACKGROUND FETCH');
 }
-
 void onStart() {
   WidgetsFlutterBinding.ensureInitialized();
   final service = FlutterBackgroundService();
@@ -89,61 +88,68 @@ Future<dynamic> initListenIncomingSmsState() async {
 
 
 }
-
 onMessage(SmsMessage message) async {
 
   _message = message.body ?? "Error reading message body.";
   debugPrint("onMessage called");
-  //QB39KD8L9X Confirmed.on 3/2/22 at 11:57 AMKsh18,382.00
-  // received from 254768011712 ELIJAH KIMANI GITUIYA.
-  // New Account balance is Ksh88,033.38. Transaction cost, Ksh45.95
-  const transStart = "";
-  const transEnd = "Confirmed";
-  final startIndex = message.body.toString().indexOf(transStart);
-  final endIndex = message.body.toString().indexOf(transEnd, startIndex+ transStart.length);
-  debugPrint("FG TransID"+message.body.toString().substring(startIndex + transStart.length, endIndex));
 
-
-  saveMpesaMessage(
-      MpesaSMSModel(
-          _message.substring(startIndex + transStart.length, endIndex),
-          "1",
-          "1",
-          "1",
-          "1",
-          1,
-          1,
-          DateTime.now().toString()));
 
 }
-
-onSendStatus(SendStatus status) {
-
-  _message = status == SendStatus.SENT ? "sent" : "delivered";
-
-}
-
 onBackgroundMessage(SmsMessage message) {
-  debugPrint("onBackgroundMessage called"+message.body.toString());
+  debugPrint("onBackgroundMessage called "+message.subscriptionId.toString());
+
+  // QB39KD8L9X Confirmed.on 3/2/22 at 11:57 AMKsh18,382.00
+  // received from 254720968729 Hillary Kalya.
+  // New Account balance is Ksh88,033.38. Transaction cost, Ksh45.95
 
   const transStart = "";
   const transEnd = "Confirmed";
-  final startIndex = message.body.toString().indexOf(transStart);
-  final endIndex = message.body.toString().indexOf(transEnd, startIndex+ transStart.length);
-  debugPrint("BG TransID"+message.body.toString().substring(startIndex + transStart.length, endIndex));
+  final transStartIndex = message.body.toString().indexOf(transStart);
+  final transEndIndex = message.body.toString().indexOf(transEnd, transStartIndex+ transStart.length);
+  debugPrint("BG TransID "+message.body.toString().substring(transStartIndex + transStart.length, transEndIndex));
+  String transID=message.body.toString().substring(transStartIndex + transStart.length, transEndIndex);
+
+  const transDateStart = "Confirmed.on";
+  const transDateEnd = "Ksh";
+  final transDateStartIndex = message.body.toString().indexOf(transDateStart);
+  final transDateEndIndex = message.body.toString().indexOf(transDateEnd, transDateStartIndex+ transDateStart.length);
+  debugPrint("BG TransDate "+message.body.toString().substring(transDateStartIndex + transDateStart.length, transDateEndIndex));
+  String transDate=message.body.toString().substring(transDateStartIndex + transDateStart.length, transDateEndIndex);
+
+  const transAmountStart = "Ksh";
+  const transAmountEnd = "received";
+  final transAmountStartIndex = message.body.toString().indexOf(transAmountStart);
+  final transAmountEndIndex = message.body.toString().indexOf(transAmountEnd, transAmountStartIndex+ transAmountStart.length);
+  debugPrint("BG TransAmount "+message.body.toString().substring(transAmountStartIndex + transAmountStart.length, transAmountEndIndex));
+  String transAmount=message.body.toString().substring(transAmountStartIndex + transAmountStart.length, transAmountEndIndex);
+
+  const phoneStart = "from ";
+  const phoneEnd = " ";
+  final phoneStartIndex = message.body.toString().indexOf(phoneStart);
+  final phoneEndIndex = message.body.toString().indexOf(phoneEnd, phoneStartIndex+ phoneStart.length);
+  debugPrint("BG PhoneNumber "+message.body.toString().substring(phoneStartIndex + phoneStart.length, phoneEndIndex));
+  String phoneNumber=message.body.toString().substring(phoneStartIndex + phoneStart.length, phoneEndIndex).toString();
+
+  String nameStart = phoneNumber;
+  const nameEnd = ".";
+  final nameStartIndex = message.body.toString().indexOf(nameStart);
+  final nameEndIndex = message.body.toString().indexOf(nameEnd, nameStartIndex+ nameStart.length);
+  debugPrint("BG UserName "+message.body.toString().substring(nameStartIndex +nameStart.length, nameEndIndex));
+  String userName=message.body.toString().substring(nameStartIndex + nameStart.length, nameEndIndex).toString();
+
+
+
   saveMpesaMessage(
       MpesaSMSModel(
-          message.body.toString().substring(startIndex + transStart.length, endIndex),
-          "1",
-          "1",
-          "1",
-          "1",
+          transID,
+          transAmount,
+          phoneNumber,
+          userName,
+          transDate,
           1,
           1,
           DateTime.now().toString()));
 }
-
-
 void saveMpesaMessage( MpesaSMSModel smsModel) async {
   DatabaseHelper databaseHelper = DatabaseHelper();
   await databaseHelper.insertMpesaMessage(smsModel);
@@ -177,10 +183,84 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void initState() {
+    initializeBackgroundService();
+    initForeGroundState();
     super.initState();
 
 
   }
+  // Platform messages are asynchronous, so we initialize in an async method.
+  Future<dynamic> initForeGroundState() async {
+    final bool? result = await telephony.requestPhoneAndSmsPermissions;
+
+    if (result != null && result) {
+      telephony.listenIncomingSms(onNewMessage: onMessage, onBackgroundMessage: onBackgroundMessage);
+      debugPrint(_message .toString());
+    }
+
+    if (!mounted) return;
+  }
+
+  onMessage(SmsMessage message) async {
+    setState(() {
+      _message = message.body ?? "Error reading message body.";
+      debugPrint("onForegroundMessage called ");
+
+      // QB39KD8L9X Confirmed.on 3/2/22 at 11:57 AMKsh18,382.00
+      // received from 254720968729 Hillary Kalya.
+      // New Account balance is Ksh88,033.38. Transaction cost, Ksh45.95
+
+      const transStart = "";
+      const transEnd = "Confirmed";
+      final transStartIndex = message.body.toString().indexOf(transStart);
+      final transEndIndex = message.body.toString().indexOf(transEnd, transStartIndex+ transStart.length);
+      debugPrint("BG TransID "+message.body.toString().substring(transStartIndex + transStart.length, transEndIndex));
+      String transID=message.body.toString().substring(transStartIndex + transStart.length, transEndIndex);
+
+      const transDateStart = "Confirmed.on";
+      const transDateEnd = "Ksh";
+      final transDateStartIndex = message.body.toString().indexOf(transDateStart);
+      final transDateEndIndex = message.body.toString().indexOf(transDateEnd, transDateStartIndex+ transDateStart.length);
+      debugPrint("BG TransDate "+message.body.toString().substring(transDateStartIndex + transDateStart.length, transDateEndIndex));
+      String transDate=message.body.toString().substring(transDateStartIndex + transDateStart.length, transDateEndIndex);
+
+      const transAmountStart = "Ksh";
+      const transAmountEnd = "received";
+      final transAmountStartIndex = message.body.toString().indexOf(transAmountStart);
+      final transAmountEndIndex = message.body.toString().indexOf(transAmountEnd, transAmountStartIndex+ transAmountStart.length);
+      debugPrint("BG TransAmount "+message.body.toString().substring(transAmountStartIndex + transAmountStart.length, transAmountEndIndex));
+      String transAmount=message.body.toString().substring(transAmountStartIndex + transAmountStart.length, transAmountEndIndex);
+
+      const phoneStart = "from ";
+      const phoneEnd = " ";
+      final phoneStartIndex = message.body.toString().indexOf(phoneStart);
+      final phoneEndIndex = message.body.toString().indexOf(phoneEnd, phoneStartIndex+ phoneStart.length);
+      debugPrint("BG PhoneNumber "+message.body.toString().substring(phoneStartIndex + phoneStart.length, phoneEndIndex));
+      String phoneNumber=message.body.toString().substring(phoneStartIndex + phoneStart.length, phoneEndIndex).toString();
+
+      String nameStart = phoneNumber;
+      const nameEnd = ".";
+      final nameStartIndex = message.body.toString().indexOf(nameStart);
+      final nameEndIndex = message.body.toString().indexOf(nameEnd, nameStartIndex+ nameStart.length);
+      debugPrint("BG UserName "+message.body.toString().substring(nameStartIndex +nameStart.length, nameEndIndex));
+      String userName=message.body.toString().substring(nameStartIndex + nameStart.length, nameEndIndex).toString();
+
+
+
+      saveMpesaMessage(
+          MpesaSMSModel(
+              message.body.toString().substring(transStartIndex + transStart.length, transEndIndex),
+              transAmount,
+              phoneNumber,
+              userName,
+              transDate,
+              1,
+              1,
+              DateTime.now().toString()));
+
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
