@@ -1,115 +1,279 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_mpesa_sms/DatabaseHelper.dart';
+import 'package:flutter_mpesa_sms/MpesaSMSModel.dart';
+import 'package:telephony/telephony.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  initializeService();
+  runApp(const MyHomePage());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+String _message = "";
+final telephony = Telephony.instance;
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
 
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      // this will executed when app is in foreground or background in separated isolate
+      onStart: onStart,
+      // auto start service
+      autoStart: true,
+      isForegroundMode: true,
+    ),
+    iosConfiguration: IosConfiguration(
+      // auto start service
+      autoStart: true,
+      // this will executed when app is in foreground in separated isolate
+      onForeground: onStart,
+      // you have to enable background fetch capability on xcode project
+      onBackground: onIosBackground,
+    ),
+  );
+}
+// to ensure this executed
+// run app from xcode, then from xcode menu, select Simulate Background Fetch
+void onIosBackground() {
+  WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('FLUTTER BACKGROUND FETCH');
+}
+
+void onStart() {
+  WidgetsFlutterBinding.ensureInitialized();
+  final service = FlutterBackgroundService();
+  service.onDataReceived.listen((event) {
+
+    if (event!["action"] == "setAsForeground") {
+      service.setForegroundMode(true);
+
+      return;
+    }
+
+    if (event["action"] == "setAsBackground") {
+      service.setForegroundMode(false);
+    }
+
+    if (event["action"] == "stopService") {
+      service.stopBackgroundService();
+    }
+  });
+
+  // bring to foreground
+  service.setForegroundMode(true);
+  Timer.periodic(const Duration(seconds: 1), (timer) async {
+    if (!(await service.isServiceRunning())) timer.cancel();
+    service.setNotificationInfo(
+      title: "Mpesa Service",
+      content: "Pulled At ${DateTime.now()}",
     );
-  }
+
+    initPlatformState();
+    service.sendData({"current_date": DateTime.now().toIso8601String()},
+    );
+  });
+  /*Timer.periodic(const Duration(seconds: 10), (timer) async {
+    if (!(await service.isServiceRunning())) timer.cancel();
+    service.setNotificationInfo(
+      title: "Mpesa Service",
+      content: "Updated at ${DateTime.now()}",
+    );
+
+    initPlatformState();
+    service.sendData({"current_date": DateTime.now().toIso8601String()},
+    );
+  });*/
 }
+
+Future<dynamic> initPlatformState() async {
+  final bool? result = await telephony.requestPhoneAndSmsPermissions;
+
+  if (result != null && result) {
+    telephony.listenIncomingSms(onNewMessage: onMessage, onBackgroundMessage: onBackgroundMessage);
+
+  }
+
+
+}
+
+onMessage(SmsMessage message) async {
+
+  _message = message.body ?? "Error reading message body.";
+  debugPrint(_message .toString());
+
+  //QB39KD8L9X Confirmed.on 3/2/22 at 11:57 AMKsh18,382.00
+  // received from 254768011712 ELIJAH KIMANI GITUIYA.
+  // New Account balance is Ksh88,033.38. Transaction cost, Ksh45.95
+  const transStart = "";
+  const transEnd = "Confirmed";
+  final startIndex = _message.indexOf(transStart);
+  final endIndex = _message.indexOf(transEnd, startIndex+ transStart.length);
+
+
+  saveMpesaMessage(
+      MpesaSMSModel(
+          _message.substring(startIndex + transStart.length, endIndex),
+          "1",
+          "1",
+          "1",
+          "1",
+          1,
+          1,
+          DateTime.now().toString()));
+
+}
+
+onSendStatus(SendStatus status) {
+
+  _message = status == SendStatus.SENT ? "sent" : "delivered";
+
+}
+
+onBackgroundMessage(SmsMessage message) {
+  debugPrint("onBackgroundMessage called"+message.body.toString());
+
+  const transStart = "";
+  const transEnd = "Confirmed";
+  final startIndex = message.body.toString().indexOf(transStart);
+  final endIndex = message.body.toString().indexOf(transEnd, startIndex+ transStart.length);
+
+  saveMpesaMessage(
+      MpesaSMSModel(
+          message.body.toString().substring(startIndex + transStart.length, endIndex),
+          "1",
+          "1",
+          "1",
+          "1",
+          1,
+          1,
+          DateTime.now().toString()));
+}
+void saveMpesaMessage( MpesaSMSModel smsModel) async {
+  DatabaseHelper databaseHelper = DatabaseHelper();
+  await databaseHelper.insertMpesaMessage(smsModel);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
+  const MyHomePage({Key? key}) : super(key: key);
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+    String text = "Stop Service";
+
+    return MaterialApp(
+        home: Scaffold(
+          appBar: AppBar(
+            title: const Text('Plugin example app'),
+          ),
+          body: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Column(
+                children: [
+                  StreamBuilder<Map<String, dynamic>?>(
+                    stream: FlutterBackgroundService().onDataReceived,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      final data = snapshot.data!;
+                      DateTime? date = DateTime.tryParse(data["current_date"]);
+                      return Text(date.toString());
+                    },
+                  ),
+                  ElevatedButton(
+                    child: const Text("Foreground Mode"),
+                    onPressed: () {
+                      FlutterBackgroundService()
+                          .sendData({"action": "setAsForeground"});
+                    },
+                  ),
+                  ElevatedButton(
+                    child: const Text("Background Mode"),
+                    onPressed: () {
+                      FlutterBackgroundService()
+                          .sendData({"action": "setAsBackground"});
+                    },
+                  ),
+                  ElevatedButton(
+                    child: Text(text),
+                    onPressed: () async {
+                      final service = FlutterBackgroundService();
+                      var isRunning = await service.isServiceRunning();
+                      if (isRunning) {
+                        service.sendData(
+                          {"action": "stopService"},
+                        );
+                      } else {
+                        service.start();
+                      }
+
+                      if (!isRunning) {
+                        text = 'Stop Service';
+                      } else {
+                        text = 'Start Service';
+                      }
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+              Center(child: Text("Latest received SMS: $_message")),
+              TextButton(
+                  onPressed: () async {
+                    //await telephony.openDialer("123413453");
+
+                    saveMpesaMessage(
+                        MpesaSMSModel(
+                            "1",
+                            "1",
+                            "1",
+                            "1",
+                            "1",
+                            1,
+                            1,
+                            DateTime.now().toString()));
+                  },
+                  child: const Text('Open Dialer'))
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              FlutterBackgroundService().sendData({
+                "hello": "world",
+              });
+            },
+            child: const Icon(Icons.play_arrow),
+          ),
+        ));
   }
 }
