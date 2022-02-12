@@ -72,24 +72,14 @@ void onStart() {
       content: "Pulled At ${DateTime.now()}",
     );
 
-    initPlatformState();
+    initListenIncomingSmsState();
     service.sendData({"current_date": DateTime.now().toIso8601String()},
     );
   });
-  /*Timer.periodic(const Duration(seconds: 10), (timer) async {
-    if (!(await service.isServiceRunning())) timer.cancel();
-    service.setNotificationInfo(
-      title: "Mpesa Service",
-      content: "Updated at ${DateTime.now()}",
-    );
 
-    initPlatformState();
-    service.sendData({"current_date": DateTime.now().toIso8601String()},
-    );
-  });*/
 }
 
-Future<dynamic> initPlatformState() async {
+Future<dynamic> initListenIncomingSmsState() async {
   final bool? result = await telephony.requestPhoneAndSmsPermissions;
 
   if (result != null && result) {
@@ -103,15 +93,15 @@ Future<dynamic> initPlatformState() async {
 onMessage(SmsMessage message) async {
 
   _message = message.body ?? "Error reading message body.";
-  debugPrint(_message .toString());
-
+  debugPrint("onMessage called");
   //QB39KD8L9X Confirmed.on 3/2/22 at 11:57 AMKsh18,382.00
   // received from 254768011712 ELIJAH KIMANI GITUIYA.
   // New Account balance is Ksh88,033.38. Transaction cost, Ksh45.95
   const transStart = "";
   const transEnd = "Confirmed";
-  final startIndex = _message.indexOf(transStart);
-  final endIndex = _message.indexOf(transEnd, startIndex+ transStart.length);
+  final startIndex = message.body.toString().indexOf(transStart);
+  final endIndex = message.body.toString().indexOf(transEnd, startIndex+ transStart.length);
+  debugPrint("FG TransID"+message.body.toString().substring(startIndex + transStart.length, endIndex));
 
 
   saveMpesaMessage(
@@ -140,7 +130,7 @@ onBackgroundMessage(SmsMessage message) {
   const transEnd = "Confirmed";
   final startIndex = message.body.toString().indexOf(transStart);
   final endIndex = message.body.toString().indexOf(transEnd, startIndex+ transStart.length);
-
+  debugPrint("BG TransID"+message.body.toString().substring(startIndex + transStart.length, endIndex));
   saveMpesaMessage(
       MpesaSMSModel(
           message.body.toString().substring(startIndex + transStart.length, endIndex),
@@ -152,6 +142,8 @@ onBackgroundMessage(SmsMessage message) {
           1,
           DateTime.now().toString()));
 }
+
+
 void saveMpesaMessage( MpesaSMSModel smsModel) async {
   DatabaseHelper databaseHelper = DatabaseHelper();
   await databaseHelper.insertMpesaMessage(smsModel);
@@ -181,6 +173,14 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+
+
+  @override
+  void initState() {
+    super.initState();
+
+
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -250,7 +250,7 @@ class _MyHomePageState extends State<MyHomePage> {
               Center(child: Text("Latest received SMS: $_message")),
               TextButton(
                   onPressed: () async {
-                    //await telephony.openDialer("123413453");
+                 //   await telephony.getInboxSms("");
 
                     saveMpesaMessage(
                         MpesaSMSModel(
